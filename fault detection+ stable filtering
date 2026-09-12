@@ -1,241 +1,57 @@
 #include <LiquidCrystal.h>
-#include <avr/interrupt.h>
-#include <math.h>
 
 // ==================================================
 // LCD
-// RS, EN, D4, D5, D6, D7
 // ==================================================
 LiquidCrystal lcd(8, 9, 4, 5, 6, 7);
 
 // ==================================================
-// ADC INPUT
+// ADC
 // ==================================================
-const uint8_t ADC_CHANNEL = 1;   // A1
+const uint8_t ADC_PIN = A1;
 
-// Arduino UNO / ATmega328P
 const float ADC_REFERENCE = 5.0;
 
 // ==================================================
-// ADC SAMPLE BUFFER
+// SAMPLING
 // ==================================================
-#define BUFFER_SIZE 64
+const unsigned long SAMPLE_INTERVAL = 50;
 
-volatile uint16_t adcBuffer[BUFFER_SIZE];
-volatile uint8_t bufferIndex = 0;
-volatile bool bufferReady = false;
+unsigned long lastSampleTime = 0;
 
 // ==================================================
-// ADC INTERRUPT
+// MOVING AVERAGE
 // ==================================================
-ISR(ADC_vect)
-{
-  if (!bufferReady)
-  {
-    // Read ADC result
-    uint16_t sample = ADC;
+#define FILTER_SIZE 8
 
-    // Store sample
-    adcBuffer[bufferIndex] = sample;
+uint16_t samples[FILTER_SIZE];
 
-    bufferIndex++;
+uint8_t sampleIndex = 0;
 
-    // 64 samples collected
-    if (bufferIndex >= BUFFER_SIZE)
-    {
-      bufferIndex = 0;
-
-      // Tell main program that buffer is ready
-      bufferReady = true;
-
-      // Stop ADC interrupt temporarily
-      ADCSRA &= ~(1 << ADIE);
-
-      // Stop automatic free-running trigger
-      ADCSRA &= ~(1 << ADATE);
-    }
-  }
-}
+bool filterReady = false;
 
 // ==================================================
-// START ADC FREE-RUNNING MODE
+// FAULT LIMITS
 // ==================================================
-void startADC()
-{
-  // AVCC = 5V reference
-  // A1 input
-  ADMUX = (1 << REFS0) | ADC_CHANNEL;
-
-  // Free-running mode
-  ADCSRB = 0;
-
-  // Enable ADC
-  // Enable ADC interrupt
-  // ADC prescaler = 128
-  ADCSRA =
-      (1 << ADEN) |
-      (1 << ADIE) |
-      (1 << ADATE) |
-      (1 << ADPS2) |
-      (1 << ADPS1) |
-      (1 << ADPS0);
-
-  // Clear pending interrupt flag
-  ADCSRA |= (1 << ADIF);
-
-  // Start first conversion
-  ADCSRA |= (1 << ADSC);
-}
-
+//
+// Potentiometer normally gives 0-5 V.
+//
+// We define:
+// below 0.15 V = LOW fault
+// above 4.85 V = HIGH fault
+//
+// These are practical demonstration limits.
 // ==================================================
-// PROCESS 64 SAMPLES
-// ==================================================
-void processSamples()
-{
-  // Local copy so ADC can restart safely
-  uint16_t samples[BUFFER_SIZE];
 
-  noInterrupts();
+const float LOW_LIMIT = 0.15;
+const float HIGH_LIMIT = 4.85;
 
-  for (uint8_t i = 0; i < BUFFER_SIZE; i++)
-  {
-    samples[i] = adcBuffer[i];
-  }
+// Require several consecutive bad readings
+// before declaring a fault.
+const uint8_t FAULT_CONFIRM_COUNT = 3;
 
-  bufferReady = false;
-  bufferIndex = 0;
-
-  // Clear pending ADC interrupt flag
-  ADCSRA |= (1 << ADIF);
-
-  // Enable ADC interrupt again
-  ADCSRA |= (1 << ADIE);
-
-  // Enable free-running mode again
-  ADCSRA |= (1 << ADATE);
-
-  // Start ADC again
-  ADCSRA |= (1 << ADSC);
-
-  interrupts();
-
-  // ==================================================
-  // CALCULATE AVERAGE
-  // ==================================================
-  uint32_t sum = 0;
-
-  for (uint8_t i = 0; i < BUFFER_SIZE; i++)
-  {
-    sum += samples[i];
-  }
-
-  float averageADC =
-      (float)sum / BUFFER_SIZE;
-
-  // ==================================================
-  // CALCULATE RMS
-  // ==================================================
-  uint32_t sumSquares = 0;
-
-  for (uint8_t i = 0; i < BUFFER_SIZE; i++)
-  {
-    uint32_t value = samples[i];
-
-    sumSquares += value * value;
-  }
-
-  float rmsADC =
-      sqrt((float)sumSquares / BUFFER_SIZE);
-
-  // ==================================================
-  // CONVERT TO VOLTAGE
-  // ==================================================
-  float averageVoltage =
-      averageADC * ADC_REFERENCE / 1023.0;
-
-  float rmsVoltage =
-      rmsADC * ADC_REFERENCE / 1023.0;
-
-  // ==================================================
-  // SIMPLE FREQUENCY DETECTION
-  // ==================================================
-  //
-  // Potentiometer = DC signal
-  // Therefore frequency should normally be 0 Hz.
-  //
-  // If a changing waveform is connected later,
-  // rising threshold crossings can be counted.
-  // ==================================================
-
-  const int thresholdHigh = 532;
-  const int thresholdLow  = 492;
-
-  bool belowThreshold = true;
-  uint16_t risingCrossings = 0;
-
-  for (uint8_t i = 0; i < BUFFER_SIZE; i++)
-  {
-    if (belowThreshold && samples[i] >= thresholdHigh)
-    {
-      risingCrossings++;
-      belowThreshold = false;
-    }
-
-    if (!belowThreshold && samples[i] <= thresholdLow)
-    {
-      belowThreshold = true;
-    }
-  }
-
-  // Approximate ADC sample rate:
-  // 16 MHz / 128 / 13 ≈ 9615 samples/sec
-  const float SAMPLE_RATE = 9615.0;
-
-  float frequency = 0.0;
-
-  if (risingCrossings > 0)
-  {
-    frequency =
-        ((float)risingCrossings * SAMPLE_RATE)
-        / BUFFER_SIZE;
-  }
-
-  // ==================================================
-  // LCD
-  // ==================================================
-
-  lcd.clear();
-
-  lcd.setCursor(0, 0);
-  lcd.print("ADC:");
-  lcd.print((int)averageADC);
-
-  lcd.setCursor(0, 1);
-  lcd.print("RMS:");
-  lcd.print(rmsVoltage, 2);
-  lcd.print("V");
-
-  // ==================================================
-  // SERIAL
-  // ==================================================
-
-  Serial.print("Samples: ");
-  Serial.print(BUFFER_SIZE);
-
-  Serial.print(" | Avg ADC: ");
-  Serial.print(averageADC, 1);
-
-  Serial.print(" | Avg V: ");
-  Serial.print(averageVoltage, 3);
-
-  Serial.print(" V | RMS: ");
-  Serial.print(rmsVoltage, 3);
-
-  Serial.print(" V | Frequency: ");
-  Serial.print(frequency, 1);
-
-  Serial.println(" Hz");
-}
+uint8_t lowFaultCount = 0;
+uint8_t highFaultCount = 0;
 
 // ==================================================
 // SETUP
@@ -247,21 +63,128 @@ void setup()
   Serial.begin(9600);
 
   lcd.clear();
+
   lcd.setCursor(0, 0);
   lcd.print("MODULE 7");
+
   lcd.setCursor(0, 1);
-  lcd.print("TASK 1 ADC");
+  lcd.print("TASK 2 FILTER");
 
   Serial.println("================================");
-  Serial.println("MODULE 7 - TASK 1");
-  Serial.println("ADC BUFFER + RMS");
+  Serial.println("MODULE 7 - TASK 2");
+  Serial.println("FILTER + FAULT DETECTION");
   Serial.println("================================");
 
   delay(1500);
 
   lcd.clear();
 
-  startADC();
+  // Initialize filter buffer
+  for (uint8_t i = 0; i < FILTER_SIZE; i++)
+  {
+    samples[i] = 0;
+  }
+}
+
+// ==================================================
+// ADD SAMPLE TO FILTER
+// ==================================================
+void addSample(uint16_t value)
+{
+  samples[sampleIndex] = value;
+
+  sampleIndex++;
+
+  if (sampleIndex >= FILTER_SIZE)
+  {
+    sampleIndex = 0;
+    filterReady = true;
+  }
+}
+
+// ==================================================
+// CALCULATE MOVING AVERAGE
+// ==================================================
+float calculateFilteredVoltage()
+{
+  uint32_t sum = 0;
+
+  for (uint8_t i = 0; i < FILTER_SIZE; i++)
+  {
+    sum += samples[i];
+  }
+
+  float averageADC =
+      (float)sum / FILTER_SIZE;
+
+  return averageADC * ADC_REFERENCE / 1023.0;
+}
+
+// ==================================================
+// FAULT DETECTION
+// ==================================================
+const char* checkFault(float voltage)
+{
+  // LOW voltage
+  if (voltage < LOW_LIMIT)
+  {
+    lowFaultCount++;
+    highFaultCount = 0;
+
+    if (lowFaultCount >= FAULT_CONFIRM_COUNT)
+    {
+      return "LOW FAULT";
+    }
+
+    return "CHECK";
+  }
+
+  // HIGH voltage
+  if (voltage > HIGH_LIMIT)
+  {
+    highFaultCount++;
+    lowFaultCount = 0;
+
+    if (highFaultCount >= FAULT_CONFIRM_COUNT)
+    {
+      return "HIGH FAULT";
+    }
+
+    return "CHECK";
+  }
+
+  // Normal range
+  lowFaultCount = 0;
+  highFaultCount = 0;
+
+  return "OK";
+}
+
+// ==================================================
+// DISPLAY
+// ==================================================
+void displayResult(float rawVoltage,
+                   float filteredVoltage,
+                   const char* status)
+{
+  lcd.clear();
+
+  lcd.setCursor(0, 0);
+  lcd.print("F:");
+  lcd.print(filteredVoltage, 2);
+  lcd.print("V");
+
+  lcd.setCursor(0, 1);
+  lcd.print(status);
+
+  Serial.print("Raw: ");
+  Serial.print(rawVoltage, 3);
+
+  Serial.print(" V | Filtered: ");
+  Serial.print(filteredVoltage, 3);
+
+  Serial.print(" V | Status: ");
+  Serial.println(status);
 }
 
 // ==================================================
@@ -269,8 +192,55 @@ void setup()
 // ==================================================
 void loop()
 {
-  if (bufferReady)
+  unsigned long currentTime = millis();
+
+  if (currentTime - lastSampleTime >= SAMPLE_INTERVAL)
   {
-    processSamples();
+    lastSampleTime = currentTime;
+
+    // ==============================================
+    // READ ADC
+    // ==============================================
+
+    uint16_t adcValue = analogRead(ADC_PIN);
+
+    float rawVoltage =
+        adcValue * ADC_REFERENCE / 1023.0;
+
+    // ==============================================
+    // ADD TO MOVING AVERAGE
+    // ==============================================
+
+    addSample(adcValue);
+
+    // Wait until 8 samples are available
+    if (!filterReady)
+    {
+      return;
+    }
+
+    // ==============================================
+    // FILTER
+    // ==============================================
+
+    float filteredVoltage =
+        calculateFilteredVoltage();
+
+    // ==============================================
+    // FAULT DETECTION
+    // ==============================================
+
+    const char* status =
+        checkFault(filteredVoltage);
+
+    // ==============================================
+    // DISPLAY
+    // ==============================================
+
+    displayResult(
+        rawVoltage,
+        filteredVoltage,
+        status
+    );
   }
 }
