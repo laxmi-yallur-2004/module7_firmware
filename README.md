@@ -55,7 +55,7 @@ Frequency: N/A - potentiometer provides DC input
 
 ### Purpose
 
-To collect multiple ADC samples and calculate a stable voltage measurement.
+To collect multiple ADC samples and calculate average and RMS voltage measurement.
 
 ---
 
