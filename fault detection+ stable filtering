@@ -1,0 +1,75 @@
+#include <LiquidCrystal.h>
+
+// LCD pins
+// RS, EN, D4, D5, D6, D7
+LiquidCrystal lcd(8, 9, 4, 5, 6, 7);
+
+// ADC input
+const int ADC_PIN = A1;
+
+// Sampling interval
+const unsigned long SAMPLE_INTERVAL = 100;
+
+// Timing variable
+unsigned long lastSampleTime = 0;
+
+void setup()
+{
+  lcd.begin(16, 2);
+
+  Serial.begin(9600);
+
+  lcd.setCursor(0, 0);
+  lcd.print("MODULE 7");
+
+  lcd.setCursor(0, 1);
+  lcd.print("TASK 2");
+
+  Serial.println("================================");
+  Serial.println("MODULE 7 - TASK 2");
+  Serial.println("FIXED RATE ADC SAMPLING");
+  Serial.println("================================");
+
+  delay(1500);
+
+  lcd.clear();
+}
+
+void loop()
+{
+  unsigned long currentTime = millis();
+
+  // Take ADC sample every 100 ms
+  if (currentTime - lastSampleTime >= SAMPLE_INTERVAL)
+  {
+    lastSampleTime = currentTime;
+
+    // Read ADC
+    int adcValue = analogRead(ADC_PIN);
+
+    // Convert ADC to voltage
+    float voltage = (adcValue * 5.0) / 1023.0;
+
+    // ---------------- LCD ----------------
+
+    lcd.setCursor(0, 0);
+    lcd.print("ADC: ");
+    lcd.print(adcValue);
+    lcd.print("     ");
+
+    lcd.setCursor(0, 1);
+    lcd.print("V: ");
+    lcd.print(voltage, 2);
+    lcd.print(" V     ");
+
+    // ---------------- SERIAL ----------------
+
+    Serial.print("ADC Value: ");
+    Serial.print(adcValue);
+
+    Serial.print(" | Voltage: ");
+    Serial.print(voltage, 2);
+
+    Serial.println(" V");
+  }
+}
