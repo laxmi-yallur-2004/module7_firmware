@@ -1,65 +1,233 @@
 #include <LiquidCrystal.h>
+#include <math.h>
 
-// LCD pins
+// ==================================================
+// LCD
 // RS, EN, D4, D5, D6, D7
+// ==================================================
 LiquidCrystal lcd(8, 9, 4, 5, 6, 7);
 
-// Analog input
-const int ADC_PIN = A1;
+// ==================================================
+// ADC INPUT
+// ==================================================
+#define ADC_INPUT A1
 
+// ==================================================
+// ADC CIRCULAR BUFFER
+// ==================================================
+#define BUFFER_SIZE 64
+
+volatile uint16_t adcBuffer[BUFFER_SIZE];
+
+volatile uint8_t writeIndex = 0;
+volatile bool bufferReady = false;
+
+// ==================================================
+// SETUP ADC
+// ==================================================
+void setupADC()
+{
+  // AVcc = 5V reference
+  ADMUX = (1 << REFS0);
+
+  // Enable ADC
+  // Enable ADC interrupt
+  // ADC clock prescaler = 128
+  ADCSRA =
+      (1 << ADEN) |
+      (1 << ADIE) |
+      (1 << ADPS2) |
+      (1 << ADPS1) |
+      (1 << ADPS0);
+
+  // Start first conversion
+  ADCSRA |= (1 << ADSC);
+}
+
+// ==================================================
+// ADC INTERRUPT
+// ==================================================
+ISR(ADC_vect)
+{
+  // Read ADC result
+  uint16_t value = ADC;
+
+  // Store ADC value
+  adcBuffer[writeIndex] = value;
+
+  writeIndex++;
+
+  // Buffer full
+  if (writeIndex >= BUFFER_SIZE)
+  {
+    writeIndex = 0;
+
+    bufferReady = true;
+
+    // Stop ADC conversions temporarily.
+    // This keeps the 64-sample block safe
+    // while the main program processes it.
+    ADCSRA &= ~(1 << ADSC);
+  }
+}
+
+// ==================================================
+// PROCESS 64 ADC SAMPLES
+// ==================================================
+void processSamples()
+{
+  uint16_t sampleCopy[BUFFER_SIZE];
+
+  // Stop ADC interrupt while copying
+  ADCSRA &= ~(1 << ADIE);
+
+  // Copy completed buffer
+  for (uint8_t i = 0; i < BUFFER_SIZE; i++)
+  {
+    sampleCopy[i] = adcBuffer[i];
+  }
+
+  // Reset buffer state
+  writeIndex = 0;
+  bufferReady = false;
+
+  // Clear pending ADC interrupt flag
+  ADCSRA |= (1 << ADIF);
+
+  // Enable ADC interrupt again
+  ADCSRA |= (1 << ADIE);
+
+  // Start ADC again
+  ADCSRA |= (1 << ADSC);
+
+  // ==================================================
+  // CALCULATE AVERAGE
+  // ==================================================
+
+  uint32_t sum = 0;
+
+  for (uint8_t i = 0; i < BUFFER_SIZE; i++)
+  {
+    sum += sampleCopy[i];
+  }
+
+  float averageADC =
+      (float)sum / BUFFER_SIZE;
+
+  // ==================================================
+  // CALCULATE RMS
+  // ==================================================
+
+  uint32_t sumSquares = 0;
+
+  for (uint8_t i = 0; i < BUFFER_SIZE; i++)
+  {
+    sumSquares +=
+        (uint32_t)sampleCopy[i] *
+        sampleCopy[i];
+  }
+
+  float rmsADC =
+      sqrt((float)sumSquares / BUFFER_SIZE);
+
+  // ==================================================
+  // CONVERT ADC TO VOLTAGE
+  // ==================================================
+
+  float averageVoltage =
+      averageADC * 5.0 / 1023.0;
+
+  float rmsVoltage =
+      rmsADC * 5.0 / 1023.0;
+
+  // ==================================================
+  // LCD OUTPUT
+  // ==================================================
+
+  lcd.clear();
+
+  lcd.setCursor(0, 0);
+  lcd.print("ADC:");
+  lcd.print((int)averageADC);
+
+  lcd.setCursor(0, 1);
+  lcd.print("RMS:");
+  lcd.print(rmsVoltage, 2);
+  lcd.print("V");
+
+  // ==================================================
+  // SERIAL OUTPUT
+  // ==================================================
+
+  Serial.print("Samples: ");
+  Serial.print(BUFFER_SIZE);
+
+  Serial.print(" | ADC: ");
+  Serial.print(averageADC, 1);
+
+  Serial.print(" | Avg V: ");
+  Serial.print(averageVoltage, 3);
+
+  Serial.print(" V | RMS: ");
+  Serial.print(rmsVoltage, 3);
+
+  Serial.println(" V");
+
+  Serial.println(
+      "Frequency: N/A - potentiometer provides DC input"
+  );
+}
+
+// ==================================================
+// SETUP
+// ==================================================
 void setup()
 {
-  // Start LCD
   lcd.begin(16, 2);
 
-  // Start Serial Monitor
   Serial.begin(9600);
 
-  // Startup message
+  lcd.clear();
+
   lcd.setCursor(0, 0);
   lcd.print("MODULE 7");
 
   lcd.setCursor(0, 1);
-  lcd.print("ADC TASK 1");
+  lcd.print("TASK 1 ADC RMS");
 
   Serial.println("================================");
   Serial.println("MODULE 7 - TASK 1");
-  Serial.println("ADC VOLTAGE READING");
+  Serial.println("ADC BUFFER + RMS");
   Serial.println("================================");
 
-  delay(1500);
-  lcd.clear();
+  Serial.println(
+      "ADC input: A1"
+  );
+
+  Serial.println(
+      "Buffer size: 64 samples"
+  );
+
+  Serial.println(
+      "DMA note: UNO has no hardware DMA."
+  );
+
+  Serial.println(
+      "Using ADC interrupt + circular buffer."
+  );
+
+  Serial.println();
+
+  setupADC();
 }
 
+// ==================================================
+// MAIN LOOP
+// ==================================================
 void loop()
 {
-  // Read ADC
-  int adcValue = analogRead(ADC_PIN);
-
-  // Convert ADC value to voltage
-  float voltage = (adcValue * 5.0) / 1023.0;
-
-  // ---------------- LCD ----------------
-
-  lcd.setCursor(0, 0);
-  lcd.print("ADC: ");
-  lcd.print(adcValue);
-  lcd.print("     ");
-
-  lcd.setCursor(0, 1);
-  lcd.print("V: ");
-  lcd.print(voltage, 2);
-  lcd.print(" V     ");
-
-  // ---------------- SERIAL MONITOR ----------------
-
-  Serial.print("ADC Value: ");
-  Serial.print(adcValue);
-
-  Serial.print(" | Voltage: ");
-  Serial.print(voltage, 2);
-
-  Serial.println(" V");
-
-  delay(500);
+  if (bufferReady)
+  {
+    processSamples();
+  }
 }
