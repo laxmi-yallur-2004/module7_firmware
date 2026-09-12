@@ -1,75 +1,276 @@
 #include <LiquidCrystal.h>
+#include <avr/interrupt.h>
+#include <math.h>
 
-// LCD pins
+// ==================================================
+// LCD
 // RS, EN, D4, D5, D6, D7
+// ==================================================
 LiquidCrystal lcd(8, 9, 4, 5, 6, 7);
 
-// ADC input
-const int ADC_PIN = A1;
+// ==================================================
+// ADC INPUT
+// ==================================================
+const uint8_t ADC_CHANNEL = 1;   // A1
 
-// Sampling interval
-const unsigned long SAMPLE_INTERVAL = 100;
+// Arduino UNO / ATmega328P
+const float ADC_REFERENCE = 5.0;
 
-// Timing variable
-unsigned long lastSampleTime = 0;
+// ==================================================
+// ADC SAMPLE BUFFER
+// ==================================================
+#define BUFFER_SIZE 64
 
+volatile uint16_t adcBuffer[BUFFER_SIZE];
+volatile uint8_t bufferIndex = 0;
+volatile bool bufferReady = false;
+
+// ==================================================
+// ADC INTERRUPT
+// ==================================================
+ISR(ADC_vect)
+{
+  if (!bufferReady)
+  {
+    // Read ADC result
+    uint16_t sample = ADC;
+
+    // Store sample
+    adcBuffer[bufferIndex] = sample;
+
+    bufferIndex++;
+
+    // 64 samples collected
+    if (bufferIndex >= BUFFER_SIZE)
+    {
+      bufferIndex = 0;
+
+      // Tell main program that buffer is ready
+      bufferReady = true;
+
+      // Stop ADC interrupt temporarily
+      ADCSRA &= ~(1 << ADIE);
+
+      // Stop automatic free-running trigger
+      ADCSRA &= ~(1 << ADATE);
+    }
+  }
+}
+
+// ==================================================
+// START ADC FREE-RUNNING MODE
+// ==================================================
+void startADC()
+{
+  // AVCC = 5V reference
+  // A1 input
+  ADMUX = (1 << REFS0) | ADC_CHANNEL;
+
+  // Free-running mode
+  ADCSRB = 0;
+
+  // Enable ADC
+  // Enable ADC interrupt
+  // ADC prescaler = 128
+  ADCSRA =
+      (1 << ADEN) |
+      (1 << ADIE) |
+      (1 << ADATE) |
+      (1 << ADPS2) |
+      (1 << ADPS1) |
+      (1 << ADPS0);
+
+  // Clear pending interrupt flag
+  ADCSRA |= (1 << ADIF);
+
+  // Start first conversion
+  ADCSRA |= (1 << ADSC);
+}
+
+// ==================================================
+// PROCESS 64 SAMPLES
+// ==================================================
+void processSamples()
+{
+  // Local copy so ADC can restart safely
+  uint16_t samples[BUFFER_SIZE];
+
+  noInterrupts();
+
+  for (uint8_t i = 0; i < BUFFER_SIZE; i++)
+  {
+    samples[i] = adcBuffer[i];
+  }
+
+  bufferReady = false;
+  bufferIndex = 0;
+
+  // Clear pending ADC interrupt flag
+  ADCSRA |= (1 << ADIF);
+
+  // Enable ADC interrupt again
+  ADCSRA |= (1 << ADIE);
+
+  // Enable free-running mode again
+  ADCSRA |= (1 << ADATE);
+
+  // Start ADC again
+  ADCSRA |= (1 << ADSC);
+
+  interrupts();
+
+  // ==================================================
+  // CALCULATE AVERAGE
+  // ==================================================
+  uint32_t sum = 0;
+
+  for (uint8_t i = 0; i < BUFFER_SIZE; i++)
+  {
+    sum += samples[i];
+  }
+
+  float averageADC =
+      (float)sum / BUFFER_SIZE;
+
+  // ==================================================
+  // CALCULATE RMS
+  // ==================================================
+  uint32_t sumSquares = 0;
+
+  for (uint8_t i = 0; i < BUFFER_SIZE; i++)
+  {
+    uint32_t value = samples[i];
+
+    sumSquares += value * value;
+  }
+
+  float rmsADC =
+      sqrt((float)sumSquares / BUFFER_SIZE);
+
+  // ==================================================
+  // CONVERT TO VOLTAGE
+  // ==================================================
+  float averageVoltage =
+      averageADC * ADC_REFERENCE / 1023.0;
+
+  float rmsVoltage =
+      rmsADC * ADC_REFERENCE / 1023.0;
+
+  // ==================================================
+  // SIMPLE FREQUENCY DETECTION
+  // ==================================================
+  //
+  // Potentiometer = DC signal
+  // Therefore frequency should normally be 0 Hz.
+  //
+  // If a changing waveform is connected later,
+  // rising threshold crossings can be counted.
+  // ==================================================
+
+  const int thresholdHigh = 532;
+  const int thresholdLow  = 492;
+
+  bool belowThreshold = true;
+  uint16_t risingCrossings = 0;
+
+  for (uint8_t i = 0; i < BUFFER_SIZE; i++)
+  {
+    if (belowThreshold && samples[i] >= thresholdHigh)
+    {
+      risingCrossings++;
+      belowThreshold = false;
+    }
+
+    if (!belowThreshold && samples[i] <= thresholdLow)
+    {
+      belowThreshold = true;
+    }
+  }
+
+  // Approximate ADC sample rate:
+  // 16 MHz / 128 / 13 ≈ 9615 samples/sec
+  const float SAMPLE_RATE = 9615.0;
+
+  float frequency = 0.0;
+
+  if (risingCrossings > 0)
+  {
+    frequency =
+        ((float)risingCrossings * SAMPLE_RATE)
+        / BUFFER_SIZE;
+  }
+
+  // ==================================================
+  // LCD
+  // ==================================================
+
+  lcd.clear();
+
+  lcd.setCursor(0, 0);
+  lcd.print("ADC:");
+  lcd.print((int)averageADC);
+
+  lcd.setCursor(0, 1);
+  lcd.print("RMS:");
+  lcd.print(rmsVoltage, 2);
+  lcd.print("V");
+
+  // ==================================================
+  // SERIAL
+  // ==================================================
+
+  Serial.print("Samples: ");
+  Serial.print(BUFFER_SIZE);
+
+  Serial.print(" | Avg ADC: ");
+  Serial.print(averageADC, 1);
+
+  Serial.print(" | Avg V: ");
+  Serial.print(averageVoltage, 3);
+
+  Serial.print(" V | RMS: ");
+  Serial.print(rmsVoltage, 3);
+
+  Serial.print(" V | Frequency: ");
+  Serial.print(frequency, 1);
+
+  Serial.println(" Hz");
+}
+
+// ==================================================
+// SETUP
+// ==================================================
 void setup()
 {
   lcd.begin(16, 2);
 
   Serial.begin(9600);
 
+  lcd.clear();
   lcd.setCursor(0, 0);
   lcd.print("MODULE 7");
-
   lcd.setCursor(0, 1);
-  lcd.print("TASK 2");
+  lcd.print("TASK 1 ADC");
 
   Serial.println("================================");
-  Serial.println("MODULE 7 - TASK 2");
-  Serial.println("FIXED RATE ADC SAMPLING");
+  Serial.println("MODULE 7 - TASK 1");
+  Serial.println("ADC BUFFER + RMS");
   Serial.println("================================");
 
   delay(1500);
 
   lcd.clear();
+
+  startADC();
 }
 
+// ==================================================
+// LOOP
+// ==================================================
 void loop()
 {
-  unsigned long currentTime = millis();
-
-  // Take ADC sample every 100 ms
-  if (currentTime - lastSampleTime >= SAMPLE_INTERVAL)
+  if (bufferReady)
   {
-    lastSampleTime = currentTime;
-
-    // Read ADC
-    int adcValue = analogRead(ADC_PIN);
-
-    // Convert ADC to voltage
-    float voltage = (adcValue * 5.0) / 1023.0;
-
-    // ---------------- LCD ----------------
-
-    lcd.setCursor(0, 0);
-    lcd.print("ADC: ");
-    lcd.print(adcValue);
-    lcd.print("     ");
-
-    lcd.setCursor(0, 1);
-    lcd.print("V: ");
-    lcd.print(voltage, 2);
-    lcd.print(" V     ");
-
-    // ---------------- SERIAL ----------------
-
-    Serial.print("ADC Value: ");
-    Serial.print(adcValue);
-
-    Serial.print(" | Voltage: ");
-    Serial.print(voltage, 2);
-
-    Serial.println(" V");
+    processSamples();
   }
 }
