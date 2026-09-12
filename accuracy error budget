@@ -1,0 +1,137 @@
+#include <LiquidCrystal.h>
+
+// LCD pins
+// RS, EN, D4, D5, D6, D7
+LiquidCrystal lcd(8, 9, 4, 5, 6, 7);
+
+// ADC input
+const int ADC_PIN = A1;
+
+// ADC reference voltage
+const float ADC_REFERENCE = 5.0;
+
+// Sampling interval
+const unsigned long SAMPLE_INTERVAL = 500;
+
+unsigned long lastSampleTime = 0;
+
+// Reference voltage entered from Serial Monitor
+float referenceVoltage = 0.0;
+
+void setup()
+{
+  lcd.begin(16, 2);
+
+  Serial.begin(9600);
+
+  lcd.setCursor(0, 0);
+  lcd.print("MODULE 7");
+
+  lcd.setCursor(0, 1);
+  lcd.print("TASK 3");
+
+  Serial.println("================================");
+  Serial.println("MODULE 7 - TASK 3");
+  Serial.println("ADC ACCURACY TEST");
+  Serial.println("================================");
+
+  Serial.println();
+  Serial.println("Measure A1 voltage using");
+  Serial.println("a multimeter.");
+  Serial.println();
+  Serial.println("Enter reference voltage in V.");
+  Serial.println("Example: 2.70");
+  Serial.println();
+
+  delay(1500);
+
+  lcd.clear();
+}
+
+void loop()
+{
+  // Check Serial Monitor for reference voltage
+  if (Serial.available() > 0)
+  {
+    referenceVoltage = Serial.parseFloat();
+
+    Serial.print("Reference Voltage: ");
+    Serial.print(referenceVoltage, 3);
+    Serial.println(" V");
+
+    while (Serial.available() > 0)
+    {
+      Serial.read();
+    }
+  }
+
+  unsigned long currentTime = millis();
+
+  // Take measurement every 500 ms
+  if (currentTime - lastSampleTime >= SAMPLE_INTERVAL)
+  {
+    lastSampleTime = currentTime;
+
+    // Read ADC
+    int adcValue = analogRead(ADC_PIN);
+
+    // Convert ADC value to voltage
+    float measuredVoltage =
+      (adcValue * ADC_REFERENCE) / 1023.0;
+
+    float errorVoltage = 0.0;
+    float errorPercent = 0.0;
+
+    // Calculate error only after reference is entered
+    if (referenceVoltage > 0.0)
+    {
+      errorVoltage =
+        measuredVoltage - referenceVoltage;
+
+      // Absolute error
+      if (errorVoltage < 0)
+      {
+        errorVoltage = -errorVoltage;
+      }
+
+      // Percentage error
+      errorPercent =
+        (errorVoltage / referenceVoltage) * 100.0;
+    }
+
+    // =========================
+    // LCD
+    // =========================
+
+    lcd.setCursor(0, 0);
+    lcd.print("V:");
+    lcd.print(measuredVoltage, 2);
+    lcd.print("       ");
+
+    lcd.setCursor(0, 1);
+    lcd.print("Err:");
+    lcd.print(errorPercent, 2);
+    lcd.print("%    ");
+
+    // =========================
+    // SERIAL MONITOR
+    // =========================
+
+    Serial.print("ADC: ");
+    Serial.print(adcValue);
+
+    Serial.print(" | Measured: ");
+    Serial.print(measuredVoltage, 3);
+
+    Serial.print(" V | Reference: ");
+    Serial.print(referenceVoltage, 3);
+
+    Serial.print(" V | Error: ");
+    Serial.print(errorVoltage, 3);
+
+    Serial.print(" V | Error: ");
+    Serial.print(errorPercent, 2);
+
+    Serial.println(" %");
+  }
+}
