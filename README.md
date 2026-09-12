@@ -1,10 +1,12 @@
-# Module 7 Firmware
+# Module 7 – ADC Measurement
 
 ## Overview
 
-Module 7 demonstrates ADC sampling, stable voltage measurement, RMS calculation, and ADC accuracy testing using an Arduino Uno.
+This module demonstrates **ADC voltage measurement using Arduino Uno**.
 
-The input is provided using a potentiometer connected to analog pin A1.
+The potentiometer is connected to **A1**. The Arduino reads the analog voltage and converts it into a digital ADC value from **0 to 1023**.
+
+---
 
 ## Hardware Used
 
@@ -13,7 +15,7 @@ The input is provided using a potentiometer connected to analog pin A1.
 * Potentiometer
 * USB cable
 
-## LCD Connections
+### LCD Connections
 
 ```text
 RS = 8
@@ -24,19 +26,17 @@ D6 = 6
 D7 = 7
 ```
 
-ADC input:
+### ADC Input
 
 ```text
 Potentiometer → A1
 ```
 
-## Tasks
+---
 
-### Task 1 - ADC Sampling and RMS
+# Task 1 – ADC Buffer + RMS
 
-The Arduino collects 64 ADC samples using the ADC interrupt.
-
-The samples are stored in a buffer.
+The Arduino collects **64 ADC samples** using an ADC interrupt and stores them in a buffer.
 
 The program calculates:
 
@@ -44,37 +44,54 @@ The program calculates:
 * Average voltage
 * RMS voltage
 
-For a DC potentiometer input, average voltage and RMS voltage are approximately equal.
+For a DC potentiometer input, the average voltage and RMS voltage are approximately the same.
 
-Example:
+### Example Output
 
 ```text
-Samples: 64 | ADC: 471.5 | Avg V: 2.305 V | RMS: 2.305 V
+Samples: 64 | ADC: 471.4 | Avg V: 2.304 V | RMS: 2.304 V
 Frequency: N/A - potentiometer provides DC input
 ```
 
-The Arduino Uno does not have hardware DMA, so an ADC interrupt and buffer are used for sample collection.
+### Purpose
 
-### Task 2 - Stable Filtering
+To collect multiple ADC samples and calculate a stable voltage measurement.
 
-The ADC input is sampled repeatedly and the readings are processed to obtain a stable voltage value.
+---
 
-The purpose is to reduce small ADC reading variations and obtain a more stable measurement.
+# Task 2 – Fixed-Rate ADC Sampling
 
-### Task 3 - ADC Accuracy and Error
+The Arduino reads the ADC at a fixed interval of **100 ms**.
 
-The measured ADC voltage is compared with a reference voltage.
+The program uses `millis()` to control the sampling time without continuously waiting.
+
+### Example Output
+
+```text
+ADC Value: 471
+Voltage: 2.30 V
+```
+
+### Purpose
+
+To perform ADC measurements at a controlled and fixed sampling rate.
+
+---
+
+# Task 3 – ADC Accuracy and Error
+
+The Arduino ADC measurement is compared with a reference voltage measured using a multimeter.
 
 The program calculates:
 
 ```text
-Absolute Error = |Measured Voltage - Reference Voltage|
+Voltage Error = |Measured Voltage - Reference Voltage|
 
 Percentage Error =
-(Absolute Error / Reference Voltage) × 100
+Voltage Error / Reference Voltage × 100
 ```
 
-Example:
+### Example Output
 
 ```text
 ADC: 470
@@ -84,24 +101,22 @@ Error: 0.013 V
 Error: 0.56 %
 ```
 
-## ADC Voltage Formula
+### Purpose
 
-The Arduino Uno uses a 10-bit ADC.
+To check how accurate the Arduino ADC voltage measurement is.
+
+---
+
+# Summary
 
 ```text
-ADC range = 0 to 1023
+Task 1 → 64 ADC samples + Average + RMS
 
-Voltage = ADC × 5.0 / 1023
+Task 2 → Fixed-rate ADC sampling every 100 ms
+
+Task 3 → ADC accuracy + Error calculation
 ```
 
 ## Result
 
-Module 7 demonstrates:
-
-1. ADC sampling and buffering
-2. Average and RMS calculation
-3. Stable ADC measurement
-4. ADC voltage conversion
-5. Accuracy and error calculation
-
-All tasks were tested using Arduino Uno and a potentiometer input.
+Module 7 demonstrates **ADC sampling, voltage calculation, RMS measurement, fixed-rate sampling, and ADC accuracy checking** using Arduino Uno.
