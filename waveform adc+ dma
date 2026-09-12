@@ -1,0 +1,65 @@
+#include <LiquidCrystal.h>
+
+// LCD pins
+// RS, EN, D4, D5, D6, D7
+LiquidCrystal lcd(8, 9, 4, 5, 6, 7);
+
+// Analog input
+const int ADC_PIN = A1;
+
+void setup()
+{
+  // Start LCD
+  lcd.begin(16, 2);
+
+  // Start Serial Monitor
+  Serial.begin(9600);
+
+  // Startup message
+  lcd.setCursor(0, 0);
+  lcd.print("MODULE 7");
+
+  lcd.setCursor(0, 1);
+  lcd.print("ADC TASK 1");
+
+  Serial.println("================================");
+  Serial.println("MODULE 7 - TASK 1");
+  Serial.println("ADC VOLTAGE READING");
+  Serial.println("================================");
+
+  delay(1500);
+  lcd.clear();
+}
+
+void loop()
+{
+  // Read ADC
+  int adcValue = analogRead(ADC_PIN);
+
+  // Convert ADC value to voltage
+  float voltage = (adcValue * 5.0) / 1023.0;
+
+  // ---------------- LCD ----------------
+
+  lcd.setCursor(0, 0);
+  lcd.print("ADC: ");
+  lcd.print(adcValue);
+  lcd.print("     ");
+
+  lcd.setCursor(0, 1);
+  lcd.print("V: ");
+  lcd.print(voltage, 2);
+  lcd.print(" V     ");
+
+  // ---------------- SERIAL MONITOR ----------------
+
+  Serial.print("ADC Value: ");
+  Serial.print(adcValue);
+
+  Serial.print(" | Voltage: ");
+  Serial.print(voltage, 2);
+
+  Serial.println(" V");
+
+  delay(500);
+}
