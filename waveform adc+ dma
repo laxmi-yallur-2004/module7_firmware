@@ -1,3 +1,4 @@
+#include <Arduino.h>
 #include <LiquidCrystal.h>
 #include <math.h>
 
@@ -28,11 +29,12 @@ volatile bool bufferReady = false;
 void setupADC()
 {
   // AVcc = 5V reference
-  ADMUX = (1 << REFS0);
+  // ADC input = A1
+  ADMUX = (1 << REFS0) | 1;
 
   // Enable ADC
   // Enable ADC interrupt
-  // ADC clock prescaler = 128
+  // ADC prescaler = 128
   ADCSRA =
       (1 << ADEN) |
       (1 << ADIE) |
@@ -40,7 +42,7 @@ void setupADC()
       (1 << ADPS1) |
       (1 << ADPS0);
 
-  // Start first conversion
+  // Start first ADC conversion
   ADCSRA |= (1 << ADSC);
 }
 
@@ -52,22 +54,26 @@ ISR(ADC_vect)
   // Read ADC result
   uint16_t value = ADC;
 
-  // Store ADC value
+  // Store sample
   adcBuffer[writeIndex] = value;
 
   writeIndex++;
 
-  // Buffer full
+  // Check if 64 samples are collected
   if (writeIndex >= BUFFER_SIZE)
   {
     writeIndex = 0;
 
     bufferReady = true;
 
-    // Stop ADC conversions temporarily.
-    // This keeps the 64-sample block safe
-    // while the main program processes it.
-    ADCSRA &= ~(1 << ADSC);
+    // Stop starting new conversions.
+    // The completed 64-sample block will now
+    // be processed by the main program.
+  }
+  else
+  {
+    // Start next ADC conversion
+    ADCSRA |= (1 << ADSC);
   }
 }
 
@@ -78,7 +84,7 @@ void processSamples()
 {
   uint16_t sampleCopy[BUFFER_SIZE];
 
-  // Stop ADC interrupt while copying
+  // Stop ADC interrupt while copying buffer
   ADCSRA &= ~(1 << ADIE);
 
   // Copy completed buffer
@@ -91,17 +97,17 @@ void processSamples()
   writeIndex = 0;
   bufferReady = false;
 
-  // Clear pending ADC interrupt flag
+  // Clear ADC interrupt flag
   ADCSRA |= (1 << ADIF);
 
-  // Enable ADC interrupt again
+  // Enable ADC interrupt
   ADCSRA |= (1 << ADIE);
 
-  // Start ADC again
+  // Start next block
   ADCSRA |= (1 << ADSC);
 
   // ==================================================
-  // CALCULATE AVERAGE
+  // AVERAGE
   // ==================================================
 
   uint32_t sum = 0;
@@ -115,7 +121,7 @@ void processSamples()
       (float)sum / BUFFER_SIZE;
 
   // ==================================================
-  // CALCULATE RMS
+  // RMS
   // ==================================================
 
   uint32_t sumSquares = 0;
@@ -131,7 +137,7 @@ void processSamples()
       sqrt((float)sumSquares / BUFFER_SIZE);
 
   // ==================================================
-  // CONVERT ADC TO VOLTAGE
+  // ADC TO VOLTAGE
   // ==================================================
 
   float averageVoltage =
@@ -141,7 +147,7 @@ void processSamples()
       rmsADC * 5.0 / 1023.0;
 
   // ==================================================
-  // LCD OUTPUT
+  // LCD
   // ==================================================
 
   lcd.clear();
@@ -156,7 +162,7 @@ void processSamples()
   lcd.print("V");
 
   // ==================================================
-  // SERIAL OUTPUT
+  // SERIAL
   // ==================================================
 
   Serial.print("Samples: ");
@@ -200,16 +206,11 @@ void setup()
   Serial.println("ADC BUFFER + RMS");
   Serial.println("================================");
 
-  Serial.println(
-      "ADC input: A1"
-  );
+  Serial.println("ADC input: A1");
+  Serial.println("Buffer size: 64 samples");
 
   Serial.println(
-      "Buffer size: 64 samples"
-  );
-
-  Serial.println(
-      "DMA note: UNO has no hardware DMA."
+      "UNO has no hardware DMA."
   );
 
   Serial.println(
