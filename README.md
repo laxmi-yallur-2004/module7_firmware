@@ -10,15 +10,16 @@
 
 ## Tasks
 
-### Task 1 – RMS + Frequency
+### Task 1 – ADC Sampling + Average ADC + RMS Voltage + Frequency Measurement
 
 * ADC reads the signal from **A1**.
 * ADC interrupt stores samples in two 64-sample buffers.
 * The main loop processes 2048 samples.
-* RMS voltage is calculated from the ADC samples.
+* Average ADC is calculated.
+* RMS voltage is calculated.
 * Timer1 Input Capture measures frequency through **D8 / ICP1**.
 
-### Task 2 – Sensor Fault Detection + Stable Filtering
+### Task 2 – Stable Filtering + Sensor Fault Detection
 
 * ADC average is passed through a simple weighted filter.
 * The filter makes the ADC reading more stable.
@@ -34,11 +35,11 @@ Timer2 generates a PWM test signal on **D3**.
 Timer2 → D3 PWM
 ```
 
-The same signal is connected to:
+Connections for normal testing:
 
 ```text
-D3 → A1    → ADC → RMS
-D3 → D8    → Timer1 → Frequency
+D3 → A1 → ADC → Average + RMS
+D3 → D8 → Timer1 → Frequency
 ```
 
 PWM is used only as an internal test signal.
@@ -54,25 +55,29 @@ PWM is used only as an internal test signal.
 | D3 → D8   | Jumper                 |
 | GND       | Common ground          |
 
-## Normal Output
+## Normal Test Output
 
 ```text
 SENSOR OK
 AVERAGE ADC: 511.5
-FILTERED ADC: 506.1
+FILTERED ADC: 511.5
 RMS: 3.536 V
 FREQUENCY: 976.56 Hz
 ```
 
 ## Fault Test
 
-Connect:
+First remove the **D3 → A1** jumper.
+
+Then connect:
 
 ```text
 A1 → GND
 ```
 
-Expected result:
+Keep **D3 → D8** connected.
+
+Expected output:
 
 ```text
 SENSOR FAULT
@@ -92,24 +97,27 @@ FREQUENCY: 976.56 Hz
 
 ## Verification
 
-* RMS calculation: **PASS**
-* Frequency measurement: **PASS**
-* Stable filtering: **PASS**
-* Sensor fault detection: **PASS**
-* PWM test signal: **PASS**
+| Test                   | Result |
+| ---------------------- | ------ |
+| ADC sampling           | PASS   |
+| Average ADC            | PASS   |
+| RMS calculation        | PASS   |
+| Frequency measurement  | PASS   |
+| Stable filtering       | PASS   |
+| Sensor fault detection | PASS   |
+| PWM test signal        | PASS   |
 
 ## Resource Usage
 
 * Two ADC buffers
 * 64 samples per buffer
 * No large 2048-sample array
-* No dynamic memory
-* No `delay()`
+  
 
 ## Result
 
-**Module 7: PASS**
+**MODULE 7: PASS**
 
-Task 1 successfully measures **RMS and frequency**.
+**Task 1:** ADC sampling, Average ADC, RMS voltage and frequency measurement.
 
-Task 2 successfully performs **stable filtering and sensor fault detection**.
+**Task 2:** Stable filtering and sensor fault detection.
