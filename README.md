@@ -1,123 +1,86 @@
-# MODULE 7 FIRMWARE
+# Module 7 – ADC + DMA + RMS + Frequency + Sensor Fault + Stable Processing Pipeline
 
-## Platform
+## Objective
 
-* Arduino Uno
-* ATmega328P
-* CPU: 16 MHz
-* ADC: 10-bit
-* Serial: 115200 baud
+* ADC sampling using DMA
+* RMS voltage measurement
+* Frequency measurement
+* Stable signal filtering
+* Sensor fault detection
 
-## Tasks
+## Hardware
 
-### Task 1 – ADC Sampling + Average ADC + RMS Voltage + Frequency Measurement
+**STM32F401CCU6**
 
-* ADC reads the signal from **A1**.
-* ADC interrupt stores samples in two 64-sample buffers.
-* The main loop processes 2048 samples.
-* Average ADC is calculated.
-* RMS voltage is calculated.
-* Timer1 Input Capture measures frequency through **D8 / ICP1**.
+| Device              | STM32 |
+| ------------------- | ----- |
+| Potentiometer wiper | PA0   |
+| Potentiometer 3.3V  | 3.3V  |
+| Potentiometer GND   | GND   |
+| USB-TTL RX          | PA9   |
+| USB-TTL TX          | PA10  |
+| USB-TTL GND         | GND   |
+| ST-LINK SWDIO       | PA13  |
+| ST-LINK SWCLK       | PA14  |
+| ST-LINK GND         | GND   |
 
-### Task 2 – Stable Filtering + Sensor Fault Detection
+## Working
 
-* ADC average is passed through a simple weighted filter.
-* The filter makes the ADC reading more stable.
-* The filtered ADC value is checked against the valid range.
-* Four consecutive fault readings are required before reporting `SENSOR FAULT`.
-* A valid reading resets the fault counter.
+* ADC reads the analog signal from PA0.
+* DMA continuously stores ADC samples in a circular buffer.
+* The samples are processed in blocks.
+* RMS voltage is calculated from the ADC samples.
+* A filter reduces small ADC variations.
+* Frequency is detected from repeated signal crossings.
+* Sensor fault is detected when the input stays near the ADC limits.
+* The processing pipeline continuously acquires, processes, filters, and displays the result.
 
-## Test Signal
-
-Timer2 generates a PWM test signal on **D3**.
-
-```text
-Timer2 → D3 PWM
-```
-
-Connections for normal testing:
-
-```text
-D3 → A1 → ADC → Average + RMS
-D3 → D8 → Timer1 → Frequency
-```
-
-PWM is used only as an internal test signal.
-
-## Connections
-
-| Pin       | Connection             |
-| --------- | ---------------------- |
-| D3        | PWM test output        |
-| A1        | ADC input              |
-| D8 / ICP1 | Timer1 frequency input |
-| D3 → A1   | Jumper                 |
-| D3 → D8   | Jumper                 |
-| GND       | Common ground          |
-
-## Normal Test Output
+## Voltage Calculation
 
 ```text
-SENSOR OK
-AVERAGE ADC: 511.5
-FILTERED ADC: 511.5
-RMS: 3.536 V
-FREQUENCY: 976.56 Hz
+Voltage (mV) = ADC × 3300 / 4095
 ```
 
-## Fault Test
+* 3300 = 3.3 V in millivolts
+* 4095 = maximum 12-bit ADC value
 
-First remove the **D3 → A1** jumper.
+## Test Result
 
-Then connect:
+Using the potentiometer:
 
 ```text
-A1 → GND
+ADC AVERAGE: 2607 | 2100 mV
+RMS VOLTAGE: 2100 mV
+FILTERED ADC: 2608
+FREQUENCY: 0 Hz
+MIN ADC: 2604
+MAX ADC: 2614
+SENSOR FAULT: NO
 ```
-
-Keep **D3 → D8** connected.
-
-Expected output:
-
-```text
-SENSOR FAULT
-AVERAGE ADC: 0.0
-FILTERED ADC: 0.0
-RMS: 0.000 V
-FREQUENCY: 976.56 Hz
-```
-
-## Timer Usage
-
-| Timer  | Purpose               |
-| ------ | --------------------- |
-| Timer0 | Arduino timing        |
-| Timer1 | Frequency measurement |
-| Timer2 | PWM test signal       |
-
-## Verification
-
-| Test                   | Result |
-| ---------------------- | ------ |
-| ADC sampling           | PASS   |
-| Average ADC            | PASS   |
-| RMS calculation        | PASS   |
-| Frequency measurement  | PASS   |
-| Stable filtering       | PASS   |
-| Sensor fault detection | PASS   |
-| PWM test signal        | PASS   |
-
-## Resource Usage
-
-* Two ADC buffers
-* 64 samples per buffer
-* No large 2048-sample array
-  
 
 ## Result
 
-**MODULE 7: PASS**
+* ADC average is **2607**.
+* Voltage is approximately **2100 mV (2.10 V)**.
+* RMS is approximately **2100 mV** because the potentiometer gives a nearly constant DC signal.
+* Filtered ADC is stable.
+* Frequency is **0 Hz** because the potentiometer produces DC, not a periodic signal.
+* Small MIN/MAX changes are normal ADC noise.
+* Sensor fault is **NO** because the input is not near the ADC limits.
 
-**Task 1:** ADC sampling, Average ADC, RMS voltage and frequency measurement.
+## Frequency Test
 
-**Task 2:** Stable filtering and sensor fault detection.
+For non-zero frequency, a periodic signal can be connected to PA0.
+
+```text
+Function Generator OUT → PA0
+Function Generator GND → STM32 GND
+```
+
+Example: **100 Hz input → approximately 100 Hz frequency reading.**
+
+## Conclusion
+
+The module successfully demonstrates:
+
+**ADC + DMA + RMS + Frequency + Sensor Fault + Stable Processing Pipeline**
