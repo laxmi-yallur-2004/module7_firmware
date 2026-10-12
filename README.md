@@ -16,6 +16,7 @@ The board reads the voltage on pin PA0 (ADC1, 10 kHz sampling, DMA) and prints t
 - For each block it computes the average, RMS with DC (`RMS TOTAL`), and RMS of the AC part only (`RMS AC ONLY`).
 - Frequency is measured by counting how often the signal crosses a threshold. The frequency is shown as 0 when there is no signal.
 - Printing does not stop sampling, so `MISSED BLOCKS`, `ADC OVR` and `TX DROPPED` stay 0.
+- Startup line printed by the board: `TIM2 clock: ______ Hz | sample rate: ______ Hz`
 
 **Connection**
 
@@ -31,6 +32,8 @@ Part B: frequency measurement (test signal from the board)
 - Step 3: connect one leg of the 1 uF capacitor to the same point as the resistor's PA0 end.
 - Step 4: connect the other leg of the capacitor to GND.
 - Input limit on PA0: 0 to 3.3 V only.
+- The test signal comes from the board's PA6 pin (0 to 3.3 V), so no external function generator offset was needed.
+- The submitted code has `TEST_PWM_FREQ_HZ` set to 0 (test signal off). For the frequency tests, we changed it to 10, 50, 100 and 200, then uploaded again.
 
 ```
 PA6 (test square wave) ---[ 9.77 kOhm ]---+--- PA0 (ADC input)
@@ -150,8 +153,9 @@ SENSOR FAULT: YES (low / disconnected)
 MISSED BLOCKS: 0 | ADC OVR: 0 | TX DROPPED: 0
 ```
 
+---
+
 ## Notes
 - Average, RMS and min/max are calculated from short 12.8 ms blocks, so they change from report to report. The frequency is the reliable value.
 - A floating (unplugged) input can look like a normal signal. A pull-down resistor on PA0 is needed to detect it reliably.
 - A full-swing 0 to 3.3 V square wave can trigger the clipping fault. It did not appear in our runs.
-
