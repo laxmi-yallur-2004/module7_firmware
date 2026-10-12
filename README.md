@@ -150,3 +150,8 @@ SENSOR FAULT: YES (low / disconnected)
 MISSED BLOCKS: 0 | ADC OVR: 0 | TX DROPPED: 0
 ```
 
+## Notes
+- Average, RMS and min/max are calculated from short 12.8 ms blocks, so they change from report to report. The frequency is the reliable value.
+- A floating (unplugged) input can look like a normal signal. A pull-down resistor on PA0 is needed to detect it reliably.
+- A full-swing 0 to 3.3 V square wave can trigger the clipping fault. It did not appear in our runs.
+
